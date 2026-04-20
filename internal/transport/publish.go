@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"time"
 
 	"github.com/routerarchitects/nats-agent-core/agentcore"
 	"github.com/routerarchitects/nats-agent-core/internal/contract"
@@ -16,6 +17,7 @@ type Publisher interface {
 // PublishPaths centralizes publish wrappers for shared message types.
 type PublishPaths struct {
 	subjects *subjects.Builder
+	now      func() time.Time
 }
 
 // NewPublishPaths creates publish wrappers with a validated subject builder.
@@ -28,7 +30,10 @@ func NewPublishPaths(builder *subjects.Builder) (*PublishPaths, error) {
 			Retryable: false,
 		}
 	}
-	return &PublishPaths{subjects: builder}, nil
+	return &PublishPaths{
+		subjects: builder,
+		now:      time.Now,
+	}, nil
 }
 
 // PublishConfigureNotification publishes a lightweight configure notification.
@@ -58,12 +63,17 @@ func (p *PublishPaths) SubmitAction(ctx context.Context, publisher Publisher, cm
 		return nil, err
 	}
 
+	acceptedAt := time.Now()
+	if p.now != nil {
+		acceptedAt = p.now()
+	}
+
 	return &agentcore.SubmissionAck{
 		Accepted:   true,
 		RPCID:      cmd.RPCID,
 		Target:     cmd.Target,
 		Subject:    subject,
-		AcceptedAt: cmd.Timestamp,
+		AcceptedAt: acceptedAt,
 	}, nil
 }
 
@@ -115,4 +125,3 @@ func publishEncoded(ctx context.Context, publisher Publisher, op, subject string
 	}
 	return nil
 }
-

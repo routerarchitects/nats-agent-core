@@ -165,10 +165,8 @@ func (c *ConfigurePaths) SubmitConfigure(ctx context.Context, cmd agentcore.Conf
 }
 
 func buildKVKey(pattern, target string) (string, error) {
-	if err := subjects.ValidateTarget(target); err != nil {
-		return "", err
-	}
-	if strings.TrimSpace(pattern) == "" {
+	trimmedPattern := strings.TrimSpace(pattern)
+	if trimmedPattern == "" {
 		return "", &agentcore.Error{
 			Code:      agentcore.CodeValidation,
 			Op:        "build_kv_key",
@@ -176,7 +174,17 @@ func buildKVKey(pattern, target string) (string, error) {
 			Retryable: false,
 		}
 	}
-	if strings.Count(pattern, "%s") != 1 {
+	// KV key patterns are validated as storage keys and intentionally remain
+	// separate from NATS subject-pattern validation rules.
+	if strings.ContainsAny(trimmedPattern, " \t\r\n") {
+		return "", &agentcore.Error{
+			Code:      agentcore.CodeValidation,
+			Op:        "build_kv_key",
+			Message:   "kv key pattern cannot contain whitespace",
+			Retryable: false,
+		}
+	}
+	if strings.Count(trimmedPattern, "%s") != 1 {
 		return "", &agentcore.Error{
 			Code:      agentcore.CodeValidation,
 			Op:        "build_kv_key",
@@ -184,5 +192,17 @@ func buildKVKey(pattern, target string) (string, error) {
 			Retryable: false,
 		}
 	}
-	return fmt.Sprintf(pattern, target), nil
+	residual := strings.ReplaceAll(trimmedPattern, "%s", "")
+	if strings.Contains(residual, "%") {
+		return "", &agentcore.Error{
+			Code:      agentcore.CodeValidation,
+			Op:        "build_kv_key",
+			Message:   "kv key pattern contains unsupported format directives",
+			Retryable: false,
+		}
+	}
+	if err := subjects.ValidateTarget(target); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(trimmedPattern, target), nil
 }
